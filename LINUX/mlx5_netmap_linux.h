@@ -89,14 +89,9 @@
 
 #define NM_MLX5E_ADAPTER mlx5e_priv
 
-/* These functions are in en_rx.c but needed here to
+/* This function is in en_rx.c but needed here to
  * deal with compressed CQEs
  */
-inline void mlx5e_read_cqe_slot(struct mlx5e_cq *cq, u32 cc, void *data);
-inline void mlx5e_write_cqe_slot(struct mlx5e_cq *cq, u32 cc, void *data);
-inline void mlx5e_decompress_cqe(struct mlx5e_cq *cq, struct mlx5_cqe64 *title,
-                                 struct mlx5_mini_cqe8 *mini, u16 wqe_counter,
-                                 int i);
 void mlx5e_decompress_cqes(struct mlx5e_cq *cq);
 
 /*
