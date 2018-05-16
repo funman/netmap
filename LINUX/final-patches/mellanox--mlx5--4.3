@@ -224,6 +224,19 @@ index d54ed3d..7181fc3 100644
  	return priv;
  
  err_unregister_netdev:
+diff --git a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_rx.c b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_rx.c
+index 798b1de..50cdc0b 100644
+--- a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_rx.c
++++ b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_rx.c
+@@ -150,7 +150,7 @@ static inline u32 mlx5e_decompress_cqes_cont(struct mlx5e_rq *rq,
+ 	return cqe_count;
+ }
+ 
+-static inline u32 mlx5e_decompress_cqes_start(struct mlx5e_rq *rq,
++u32 mlx5e_decompress_cqes_start(struct mlx5e_rq *rq,
+ 					      struct mlx5e_cq *cq,
+ 					      int budget_rem)
+ {
 diff --git a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c
 index b914249..54dba47 100644
 --- a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c
