@@ -72,7 +72,7 @@ index fe6c855..2479397 100644
  	u32 rx_pending_wqes;
  	u32 min_rq_size;
 diff --git a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
-index d54ed3d..d82520b 100644
+index d54ed3d..7181fc3 100644
 --- a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
 +++ b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
 @@ -162,6 +162,9 @@ void mlx5e_init_rq_type_params(struct mlx5e_priv *priv,
@@ -112,19 +112,7 @@ index d54ed3d..d82520b 100644
  	return 0;
  
  err_unmap_mtts:
-@@ -1012,6 +1028,11 @@ static int mlx5e_alloc_rq(struct mlx5e_channel *c,
- 	INIT_WORK(&rq->am.work, mlx5e_rx_am_work);
- 	rq->am.mode = params->rx_cq_moderation.cq_period_mode;
- 
-+#ifdef DEV_NETMAP
-+	if (mlx5e_netmap_configure_tx_ring(priv, txq_ix))
-+		return 0;
-+#endif /* DEV_NETMAP */
-+
- 	return 0;
- 
- err_free:
-@@ -1219,6 +1240,11 @@ static int mlx5e_wait_for_min_rx_wqes(struct mlx5e_rq *rq)
+@@ -1219,6 +1235,11 @@ static int mlx5e_wait_for_min_rx_wqes(struct mlx5e_rq *rq)
  	unsigned long exp_time = jiffies + msecs_to_jiffies(20000);
  	struct mlx5e_channel *c = rq->channel;
  
@@ -136,7 +124,7 @@ index d54ed3d..d82520b 100644
  	u16 min_wqes = mlx5_min_rx_wqes(rq->wq_type, mlx5e_rqwq_get_size(rq));
  
  	while (time_before(jiffies, exp_time)) {
-@@ -1226,6 +1252,10 @@ static int mlx5e_wait_for_min_rx_wqes(struct mlx5e_rq *rq)
+@@ -1226,6 +1247,10 @@ static int mlx5e_wait_for_min_rx_wqes(struct mlx5e_rq *rq)
  			return 0;
  
  		msleep(20);
@@ -147,7 +135,7 @@ index d54ed3d..d82520b 100644
  	}
  
  	netdev_warn(c->netdev, "Failed to get min RX wqes on RQN[0x%x] wq cur_sz(%d) min_rx_wqes(%d)\n",
-@@ -1368,6 +1398,9 @@ static void mlx5e_activate_rq(struct mlx5e_rq *rq)
+@@ -1368,6 +1393,9 @@ static void mlx5e_activate_rq(struct mlx5e_rq *rq)
  	u16 pi = sq->pc & sq->wq.sz_m1;
  	struct mlx5e_tx_wqe *nopwqe;
  
@@ -157,6 +145,18 @@ index d54ed3d..d82520b 100644
  	set_bit(MLX5E_RQ_STATE_ENABLED, &rq->state);
  	sq->db.ico_wqe[pi].opcode     = MLX5_OPCODE_NOP;
  	nopwqe = mlx5e_post_nop(&sq->wq, sq->sqn, &sq->pc);
+@@ -1564,6 +1592,11 @@ static int mlx5e_alloc_txqsq(struct mlx5e_channel *c,
+ 
+ 	sq->edge = (sq->wq.sz_m1 + 1) - MLX5_SEND_WQE_MAX_WQEBBS;
+ 
++#ifdef DEV_NETMAP
++	if (mlx5e_netmap_configure_tx_ring(c->priv, txq_ix))
++		return 0;
++#endif /* DEV_NETMAP */
++
+ 	return 0;
+ 
+ err_sq_wq_destroy:
 @@ -1771,6 +1804,9 @@ static void mlx5e_deactivate_txqsq(struct mlx5e_txqsq *sq)
  	netif_tx_disable_queue(sq->txq);
  
@@ -225,7 +225,7 @@ index d54ed3d..d82520b 100644
  
  err_unregister_netdev:
 diff --git a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c
-index b914249..128c7c4 100644
+index b914249..54dba47 100644
 --- a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c
 +++ b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c
 @@ -35,6 +35,15 @@
@@ -244,7 +244,7 @@ index b914249..128c7c4 100644
  #if defined(HAVE_IRQ_DESC_GET_IRQ_DATA) && defined(HAVE_IRQ_TO_DESC_EXPORTED)
  static inline bool mlx5e_channel_no_affinity_change(struct mlx5e_channel *c)
  {
-@@ -64,6 +73,50 @@ int mlx5e_napi_poll(struct napi_struct *napi, int budget)
+@@ -64,6 +73,45 @@ int mlx5e_napi_poll(struct napi_struct *napi, int budget)
  	clear_bit(MLX5E_CHANNEL_NAPI_SCHED, &c->flags);
  #endif
  
@@ -282,11 +282,6 @@ index b914249..128c7c4 100644
 +		 * interrupts if a call to those is already pending or in progress.
 +		 */
 +		napi_complete(napi);
-+
-+		/* avoid losing completion event during/after polling cqs */
-+		if (test_bit(MLX5E_CHANNEL_NAPI_SCHED, &c->flags)) {
-+			napi_schedule(napi); /* request another call to this func */
-+		}
 +
 +		return 0;
 +	}
