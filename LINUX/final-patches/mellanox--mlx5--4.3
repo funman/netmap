@@ -47,30 +47,6 @@ index 0e14baf..e44b0db 100644
  		en_accel/ipsec_stats.o
  
  CFLAGS_tracepoint.o := -I$(src)
-diff --git a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_ethtool.c b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_ethtool.c
-index fe6c855..2479397 100644
---- a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_ethtool.c
-+++ b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_ethtool.c
-@@ -727,6 +727,9 @@ void mlx5e_ethtool_get_ringparam(struct mlx5e_priv *priv,
- 				 struct ethtool_ringparam *param)
- {
- 	int rq_wq_type = priv->channels.params.rq_wq_type;
-+#if defined(CONFIG_NETMAP) || defined(CONFIG_NETMAP_MODULE)
-+    rq_wq_type &= 0x01;
-+#endif
- 
- 	param->rx_max_pending = mlx5e_rx_wqes_to_packets(priv, rq_wq_type,
- 							 1 << mlx5_max_log_rq_size(rq_wq_type));
-@@ -748,6 +751,9 @@ int mlx5e_ethtool_set_ringparam(struct mlx5e_priv *priv,
- 				struct ethtool_ringparam *param)
- {
- 	int rq_wq_type = priv->channels.params.rq_wq_type;
-+#if defined(CONFIG_NETMAP) || defined(CONFIG_NETMAP_MODULE)
-+    rq_wq_type &= 0x01;
-+#endif
- 	struct mlx5e_channels new_channels = {};
- 	u32 rx_pending_wqes;
- 	u32 min_rq_size;
 diff --git a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
 index d54ed3d..eec64bb 100644
 --- a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
