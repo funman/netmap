@@ -72,22 +72,12 @@ index fe6c855..2479397 100644
  	u32 rx_pending_wqes;
  	u32 min_rq_size;
 diff --git a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
-index d54ed3d..7181fc3 100644
+index d54ed3d..9cb3e42 100644
 --- a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
 +++ b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
-@@ -162,6 +162,9 @@ void mlx5e_init_rq_type_params(struct mlx5e_priv *priv,
- 			       struct mlx5e_params *params, u8 rq_type)
- {
- 	params->rq_wq_type = rq_type;
-+#ifdef DEV_NETMAP
-+	rq->rq_wq_type &= 1; // disable striding
-+#endif
- 	params->lro_wqe_sz = MLX5E_PARAMS_DEFAULT_LRO_WQE_SZ;
- 	switch (params->rq_wq_type) {
- 	case MLX5_WQ_TYPE_LINKED_LIST_STRIDING_RQ:
-@@ -198,6 +201,15 @@ static void mlx5e_set_rq_params(struct mlx5e_priv *priv,
- 	mlx5e_init_rq_type_params(priv, params, rq_type);
- }
+@@ -51,6 +51,16 @@
+ #include "vxlan.h"
+ #endif
  
 +#if defined(CONFIG_NETMAP) || defined(CONFIG_NETMAP_MODULE)
 +/*
@@ -95,13 +85,24 @@ index d54ed3d..7181fc3 100644
 + * that extend the standard driver.
 + */
 +#define NETMAP_MLX5_MAIN
++#define DEV_NETMAP
 +#include "mlx5_netmap_linux.h"
 +#endif
 +
- static void mlx5e_update_carrier(struct mlx5e_priv *priv)
+ struct mlx5e_rq_param {
+ 	u32			rqc[MLX5_ST_SZ_DW(rqc)];
+ 	struct mlx5_wq_param	wq;
+@@ -86,6 +96,9 @@ struct mlx5e_channel_param {
+ 
+ static bool mlx5e_check_fragmented_striding_rq_cap(struct mlx5_core_dev *mdev)
  {
- 	struct mlx5_core_dev *mdev = priv->mdev;
-@@ -632,6 +644,10 @@ static int mlx5e_rq_alloc_mpwqe_info(struct mlx5e_rq *rq,
++#ifdef DEV_NETMAP
++	return 0;
++#endif
+ 	return MLX5_CAP_GEN(mdev, striding_rq) &&
+ 		MLX5_CAP_GEN(mdev, umr_ptr_rlky) &&
+ 		MLX5_CAP_ETH(mdev, reg_umr_sq);
+@@ -632,6 +645,10 @@ static int mlx5e_rq_alloc_mpwqe_info(struct mlx5e_rq *rq,
  		mlx5e_build_umr_wqe(rq, &c->icosq, &wi->umr.wqe, i);
  	}
  
@@ -112,7 +113,7 @@ index d54ed3d..7181fc3 100644
  	return 0;
  
  err_unmap_mtts:
-@@ -1219,6 +1235,11 @@ static int mlx5e_wait_for_min_rx_wqes(struct mlx5e_rq *rq)
+@@ -1219,6 +1236,11 @@ static int mlx5e_wait_for_min_rx_wqes(struct mlx5e_rq *rq)
  	unsigned long exp_time = jiffies + msecs_to_jiffies(20000);
  	struct mlx5e_channel *c = rq->channel;
  
@@ -124,7 +125,7 @@ index d54ed3d..7181fc3 100644
  	u16 min_wqes = mlx5_min_rx_wqes(rq->wq_type, mlx5e_rqwq_get_size(rq));
  
  	while (time_before(jiffies, exp_time)) {
-@@ -1226,6 +1247,10 @@ static int mlx5e_wait_for_min_rx_wqes(struct mlx5e_rq *rq)
+@@ -1226,6 +1248,10 @@ static int mlx5e_wait_for_min_rx_wqes(struct mlx5e_rq *rq)
  			return 0;
  
  		msleep(20);
@@ -135,7 +136,7 @@ index d54ed3d..7181fc3 100644
  	}
  
  	netdev_warn(c->netdev, "Failed to get min RX wqes on RQN[0x%x] wq cur_sz(%d) min_rx_wqes(%d)\n",
-@@ -1368,6 +1393,9 @@ static void mlx5e_activate_rq(struct mlx5e_rq *rq)
+@@ -1368,6 +1394,9 @@ static void mlx5e_activate_rq(struct mlx5e_rq *rq)
  	u16 pi = sq->pc & sq->wq.sz_m1;
  	struct mlx5e_tx_wqe *nopwqe;
  
@@ -145,7 +146,7 @@ index d54ed3d..7181fc3 100644
  	set_bit(MLX5E_RQ_STATE_ENABLED, &rq->state);
  	sq->db.ico_wqe[pi].opcode     = MLX5_OPCODE_NOP;
  	nopwqe = mlx5e_post_nop(&sq->wq, sq->sqn, &sq->pc);
-@@ -1564,6 +1592,11 @@ static int mlx5e_alloc_txqsq(struct mlx5e_channel *c,
+@@ -1564,6 +1593,11 @@ static int mlx5e_alloc_txqsq(struct mlx5e_channel *c,
  
  	sq->edge = (sq->wq.sz_m1 + 1) - MLX5_SEND_WQE_MAX_WQEBBS;
  
@@ -157,7 +158,7 @@ index d54ed3d..7181fc3 100644
  	return 0;
  
  err_sq_wq_destroy:
-@@ -1771,6 +1804,9 @@ static void mlx5e_deactivate_txqsq(struct mlx5e_txqsq *sq)
+@@ -1771,6 +1805,9 @@ static void mlx5e_deactivate_txqsq(struct mlx5e_txqsq *sq)
  	netif_tx_disable_queue(sq->txq);
  
  	/* last doorbell out, godspeed .. */
@@ -167,7 +168,7 @@ index d54ed3d..7181fc3 100644
  	if (mlx5e_wqc_has_room_for(&sq->wq, sq->cc, sq->pc, 1)) {
  		struct mlx5e_tx_wqe *nop;
  
-@@ -1804,6 +1840,10 @@ static int mlx5e_wait_for_sq_flush(struct mlx5e_txqsq *sq)
+@@ -1804,6 +1841,10 @@ static int mlx5e_wait_for_sq_flush(struct mlx5e_txqsq *sq)
  			return 0;
  
  		msleep(20);
@@ -178,7 +179,7 @@ index d54ed3d..7181fc3 100644
  	}
  
  	netdev_err(sq->channel->netdev,
-@@ -3532,6 +3572,10 @@ int mlx5e_open_locked(struct net_device *netdev)
+@@ -3532,6 +3573,10 @@ int mlx5e_open_locked(struct net_device *netdev)
  	if (priv->profile->update_carrier)
  		priv->profile->update_carrier(priv);
  
@@ -189,7 +190,7 @@ index d54ed3d..7181fc3 100644
  	if (priv->profile->update_stats)
  		queue_delayed_work(priv->wq, &priv->update_stats_work, 0);
  
-@@ -3568,6 +3612,10 @@ int mlx5e_close_locked(struct net_device *netdev)
+@@ -3568,6 +3613,10 @@ int mlx5e_close_locked(struct net_device *netdev)
  
  	clear_bit(MLX5E_STATE_OPENED, &priv->state);
  
@@ -200,7 +201,7 @@ index d54ed3d..7181fc3 100644
  	if (MLX5E_GET_PFLAG(&priv->channels.params, MLX5E_PFLAG_SNIFFER)) {
  		mlx5e_sniffer_stop(priv);
  		MLX5E_SET_PFLAG(&priv->channels.params, MLX5E_PFLAG_SNIFFER, 0);
-@@ -6125,6 +6173,11 @@ void mlx5e_destroy_netdev(struct mlx5e_priv *priv)
+@@ -6125,6 +6174,11 @@ void mlx5e_destroy_netdev(struct mlx5e_priv *priv)
  	const struct mlx5e_profile *profile = priv->profile;
  	struct net_device *netdev = priv->netdev;
  
@@ -212,7 +213,7 @@ index d54ed3d..7181fc3 100644
  	destroy_workqueue(priv->wq);
  	if (profile->cleanup)
  		profile->cleanup(priv);
-@@ -6237,6 +6290,11 @@ static void *mlx5e_add(struct mlx5_core_dev *mdev)
+@@ -6237,6 +6291,11 @@ static void *mlx5e_add(struct mlx5_core_dev *mdev)
  	mlx5e_dcbnl_init_app(priv);
  #endif
  #endif
@@ -238,7 +239,7 @@ index 798b1de..50cdc0b 100644
  					      int budget_rem)
  {
 diff --git a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c
-index b914249..54dba47 100644
+index b914249..c1f2b8e 100644
 --- a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c
 +++ b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_txrx.c
 @@ -35,6 +35,15 @@
@@ -261,7 +262,7 @@ index b914249..54dba47 100644
  	clear_bit(MLX5E_CHANNEL_NAPI_SCHED, &c->flags);
  #endif
  
-+#ifdef DEV_NETMAP
++#if defined(CONFIG_NETMAP) || defined(CONFIG_NETMAP_MODULE)
 +	if (nm_netmap_on(NA(c->netdev))) {
 +		/*
 +		 * In netmap mode, all the work is done in the context
