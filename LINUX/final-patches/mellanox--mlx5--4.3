@@ -72,7 +72,7 @@ index fe6c855..2479397 100644
  	u32 rx_pending_wqes;
  	u32 min_rq_size;
 diff --git a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
-index d54ed3d..9cb3e42 100644
+index d54ed3d..eec64bb 100644
 --- a/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
 +++ b/mlx5/drivers/net/ethernet/mellanox/mlx5/core/en_main.c
 @@ -51,6 +51,16 @@
@@ -117,10 +117,10 @@ index d54ed3d..9cb3e42 100644
  	unsigned long exp_time = jiffies + msecs_to_jiffies(20000);
  	struct mlx5e_channel *c = rq->channel;
  
-+//#ifdef DEV_NETMAP
-+//	if (nm_netmap_on(NA(c->netdev)))
-+//		return 0; /* no need to wait when netmap has built wqes */
-+//#endif
++#ifdef DEV_NETMAP
++	if (nm_netmap_on(NA(c->netdev)))
++		return 0; /* no need to wait when netmap has built wqes */
++#endif
 +
  	u16 min_wqes = mlx5_min_rx_wqes(rq->wq_type, mlx5e_rqwq_get_size(rq));
  
