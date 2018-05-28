@@ -267,16 +267,22 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
        *           (in bottom 24 bits)
        */
       sq->skb[pi] = (void *)(uintptr_t)(nm_i & 0x00FFFFFF) +
-                    ((uintptr_t)num_wqebbs << 24);
-
-      /* fill sq edge with nops to avoid wqe wrap around */
-      while ((sq->pc & wq->sz_m1) > sq->edge)
-        mlx5e_send_nop(sq, false);
+                    ((uintptr_t)num_wqebbs << 24) +
+                    ((uintptr_t)0x42424242 << 32);
 
       sq->stats.packets++;
 
       /* next netmap slot */
       nm_i = nm_next(nm_i, lim);
+
+      /* fill sq edge with nops to avoid wqe wrap around */
+      if ((sq->pc & wq->sz_m1) > sq->edge) {
+          while ((pi = (sq->pc & wq->sz_m1)) > sq->edge) {
+              mlx5e_send_nop(sq, pi == wq->sz_m1);
+          }
+          wqe = NULL;
+          break;
+      }
     } /* next packet */
 
     /* Wake up the hardware if any packets enqueued */
@@ -287,7 +293,7 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
       mlx5e_tx_notify_hw(sq, wqe, 0);
     }
 
-    kring->nr_hwcur = head;
+    kring->nr_hwcur = nm_i;
   }
 
   /*
@@ -297,6 +303,7 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
    * Code below based on mlx5e_poll_tx_cq() in en_tx.c
    */
 
+  rmb();
   /* sq->cc must be updated only after mlx5_cqwq_update_db_record(),
    * otherwise a cq overrun may occur */
   sqcc = sq->cc;
@@ -345,8 +352,8 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
     mlx5_cqwq_update_db_record(&cq->wq);
 
     /* ensure cq space is freed before enabling more cqes */
-    wmb();
     sq->cc = sqcc;
+    wmb();
   }
 
   mlx5e_cq_arm(cq); /* allow interrupts from this CQ */
@@ -539,43 +546,49 @@ int mlx5e_netmap_tx_flush(struct mlx5e_sq *sq) {
   sqcc = sq->cc;
 
   /* Any completed jobs in the CQ? */
-  cqe = mlx5e_get_cqe(cq);
+  while ((cqe = mlx5e_get_cqe(cq))) {
+      u16 wqe_counter;
+      bool last_wqe;
 
-  while (cqe) {
-    u16 wqe_counter;
-    bool last_wqe;
+      mlx5_cqwq_pop(&cq->wq);
+      mlx5e_prefetch_cqe(cq);
 
-    mlx5_cqwq_pop(&cq->wq);
-    mlx5e_prefetch_cqe(cq);
+      /* this cqe could relate to many wqes */
+      wqe_counter = be16_to_cpu(cqe->wqe_counter);
 
-    /* this cqe could relate to many wqes */
-    wqe_counter = be16_to_cpu(cqe->wqe_counter);
+          void *skb;
+      do {
+          u16 ci = sqcc & sq->wq.sz_m1;
+          skb = sq->skb[ci];
 
-    do {
-      u16 ci = sqcc & sq->wq.sz_m1;
-      void *skb = sq->skb[ci];
+          last_wqe = (sqcc == wqe_counter);
 
-      last_wqe = (sqcc == wqe_counter);
+          if (unlikely(!skb)) { /* nop */
+              sq->stats.nop++;
+              sqcc++;
+              continue;
+          }
 
-      if (unlikely(!skb)) { /* nop */
-        sq->stats.nop++;
-        sqcc++;
-        continue;
+          if ((((uintptr_t)skb) >> 32)  != 0x42424242) {
+              break;
+          }
+          /* extract num_wqebbs from skb pointer */
+          u8 num_wqebbs = (uintptr_t)skb >> 24;
+          sqcc += num_wqebbs;
+
+      } while (!last_wqe);
+
+      if ((((uintptr_t)skb) >> 32)  != 0x42424242) {
+        sqcc = sq->pc;
+        break;
       }
-
-      /* extract num_wqebbs from skb pointer */
-      sqcc += (u8)((uintptr_t)skb >> 24);
-
-    } while (!last_wqe);
-
-    cqe = mlx5e_get_cqe(cq);
   }
 
   mlx5_cqwq_update_db_record(&cq->wq);
 
   /* ensure cq space is freed before enabling more cqes */
-  wmb();
   sq->cc = sqcc;
+  wmb();
 
   return 0;
 }
