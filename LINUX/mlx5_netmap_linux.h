@@ -264,8 +264,8 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
        *   - slot number in the netmap kring that this wqe is sending
        *           (in bottom 24 bits)
        */
-      sq->db.wqe_info[pi].skb = (void *)(uintptr_t)(nm_i & 0x00FFFFFF) +
-                    ((uintptr_t)num_wqebbs << 24);
+      sq->db.wqe_info[pi].skb = (void *)(uintptr_t)(nm_i & 0x00FFFFFF);
+      sq->db.wqe_info[pi].num_wqebbs = num_wqebbs;
 
       /* fill sq edge with nops to avoid wqe wrap around */
       while ((sq->pc & wq->sz_m1) > sq->edge) {
@@ -316,7 +316,7 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
     do {
       u16 ci = sqcc & sq->wq.sz_m1;
       void *skb = sq->db.wqe_info[ci].skb;
-      u8 num_wqebbs;
+      u8 num_wqebbs = sq->db.wqe_info[ci].num_wqebbs;
       u32 nm_i_done;
 
       last_wqe = (sqcc == wqe_counter);
@@ -327,8 +327,7 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
         continue;
       }
 
-      /* unpack num_wqebbs and slot number from skb pointer */
-      num_wqebbs = (u8)((uintptr_t)skb >> 24);
+      /* unpack slot number from skb pointer */
       nm_i_done = (u32)((uintptr_t)skb & 0x00FFFFFF);
 
       sqcc += num_wqebbs;
@@ -550,6 +549,7 @@ int mlx5e_netmap_tx_flush(struct mlx5e_txqsq *sq) {
     do {
       u16 ci = sqcc & sq->wq.sz_m1;
       void *skb = sq->db.wqe_info[ci].skb;
+      u8 num_wqebbs = sq->db.wqe_info[ci].num_wqebbs;
 
       last_wqe = (sqcc == wqe_counter);
 
@@ -559,8 +559,7 @@ int mlx5e_netmap_tx_flush(struct mlx5e_txqsq *sq) {
         continue;
       }
 
-      /* extract num_wqebbs from skb pointer */
-      sqcc += (u8)((uintptr_t)skb >> 24);
+      sqcc += num_wqebbs;
 
     } while (!last_wqe);
 
