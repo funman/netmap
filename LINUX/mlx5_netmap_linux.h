@@ -271,6 +271,7 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
 
       /* fill sq edge with nops to avoid wqe wrap around */
       while ((sq->pc & wq->sz_m1) > sq->edge) {
+          sq->db.wqe_info[sq->pc & wq->sz_m1].skb = NULL;
           struct mlx5e_tx_wqe *nop = mlx5e_post_nop(&sq->wq, sq->sqn, &sq->pc);
       }
 
