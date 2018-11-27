@@ -267,10 +267,11 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
       sq->db.wqe_info[pi].skb = (void *)(uintptr_t)(nm_i & 0x00FFFFFF);
       sq->db.wqe_info[pi].num_wqebbs = num_wqebbs;
 
+      mlx5e_notify_hw(&sq->wq, sq->pc, sq->uar_map, cseg);
+
       /* fill sq edge with nops to avoid wqe wrap around */
       while ((sq->pc & wq->sz_m1) > sq->edge) {
           struct mlx5e_tx_wqe *nop = mlx5e_post_nop(&sq->wq, sq->sqn, &sq->pc);
-          mlx5e_notify_hw(&sq->wq, sq->pc, sq->uar_map, &nop->ctrl);
       }
 
       sq->stats.packets++;
@@ -278,14 +279,6 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
       /* next netmap slot */
       nm_i = nm_next(nm_i, lim);
     } /* next packet */
-
-    /* Wake up the hardware if any packets enqueued */
-    if (wqe) {
-      /* Request a CQE when the final WQE has completed */
-      cseg->fm_ce_se = MLX5_WQE_CTRL_CQ_UPDATE;
-
-      mlx5e_notify_hw(&sq->wq, sq->pc, sq->uar_map, &wqe->ctrl);
-    }
 
     kring->nr_hwcur = head;
   }
