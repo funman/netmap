@@ -229,7 +229,7 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
       eseg->cs_flags = MLX5_ETH_WQE_L3_CSUM | MLX5_ETH_WQE_L4_CSUM;
 
       /* Use minimum inline header to minimise data copying */
-      ihs = ETH_HLEN + 2; /* MAC + MAC + VLAN + Ethertype = 16 bytes */
+      ihs = ETH_HLEN;
 
       if (unlikely(ihs > len))
         ihs = len; /* whole packet fits inline */
