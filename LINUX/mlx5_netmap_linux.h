@@ -137,6 +137,10 @@ int mlx5e_netmap_reg(struct netmap_adapter *na, int onoff) {
   return err;
 }
 
+#define MLX5E_SQ_NOPS_ROOM  MLX5_SEND_WQE_MAX_WQEBBS
+#define MLX5E_SQ_STOP_ROOM (MLX5_SEND_WQE_MAX_WQEBBS +\
+                MLX5E_SQ_NOPS_ROOM)
+
 /*
  * Reconcile kernel and user view of the transmit ring.
  *
@@ -167,6 +171,7 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
   struct NM_MLX5E_ADAPTER *priv = netdev_priv(ifp);
 
   struct mlx5e_txqsq *sq = priv->txq2sq[ring_nr];
+  struct mlx5_wq_cyc *wq = &sq->wq;
   struct mlx5e_cq *cq = &(sq->cq);
   struct mlx5e_tx_wqe *wqe = NULL;
   struct mlx5_cqe64 *cqe = NULL;
@@ -198,6 +203,9 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
      */
 
     for (n = 0; nm_i != head; n++) {
+      if (unlikely(!mlx5e_wqc_has_room_for(wq, sq->cc, sq->pc, MLX5E_SQ_STOP_ROOM))) {
+          break;
+      }
 
       struct netmap_slot *slot = &ring->slot[nm_i];
       u_int len = slot->len;
@@ -206,7 +214,6 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
 
       /* Code below based on mlx5e_sq_xmit() in en_tx.c */
 
-      struct mlx5_wq_cyc *wq = &sq->wq;
       u16 pi = sq->pc & wq->sz_m1; /* producer index */
 
       u8 opcode = MLX5_OPCODE_SEND;
@@ -281,7 +288,7 @@ int mlx5e_netmap_txsync(struct netmap_kring *kring, int flags) {
       nm_i = nm_next(nm_i, lim);
     } /* next packet */
 
-    kring->nr_hwcur = head;
+    kring->nr_hwcur = nm_i;
   }
 
   /*
